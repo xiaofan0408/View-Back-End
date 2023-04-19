@@ -20,6 +20,8 @@ public class PageDTO<T> {
      */
     private List<T> rows;
 
+    private Pagination pagination;
+
     public PageDTO(List<T> list) {
         this.rows = list;
         this.total = (long) list.size();
@@ -34,5 +36,6 @@ public class PageDTO<T> {
         this.rows = list;
         this.total = count;
     }
+
 
 }
