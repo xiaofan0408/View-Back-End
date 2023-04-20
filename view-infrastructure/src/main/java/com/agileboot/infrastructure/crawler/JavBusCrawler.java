@@ -2,12 +2,15 @@ package com.agileboot.infrastructure.crawler;
 
 
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.agileboot.common.core.page.PageDTO;
 import com.agileboot.common.core.page.Pagination;
 import com.agileboot.infrastructure.crawler.constant.Constants;
+import com.agileboot.infrastructure.crawler.model.Magnet;
 import com.agileboot.infrastructure.crawler.model.Movie;
 import com.agileboot.infrastructure.crawler.model.MovieTag;
 import com.agileboot.infrastructure.crawler.model.StarInfo;
+import com.agileboot.infrastructure.crawler.utils.RegUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -15,6 +18,10 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -24,39 +31,22 @@ public class JavBusCrawler {
 
 
 
-    public PageDTO<Movie> parseMoviesPage(String url,String magnet){
-
+    public PageDTO<Movie> parseMoviesPage(Document document){
         PageDTO<Movie> moviePage = new PageDTO<Movie>(Collections.emptyList());
-        try {
-            Map<String,String> cookies = new HashMap<>();
-            if (Constants.MagnetType_e.equals(magnet)) {
-                cookies.put("existmag","mag");
-            } else {
-                cookies.put("existmag","all");
-            }
-            List<Movie> movies = new ArrayList<>();
-            Document document = Jsoup.connect(Constants.JAVBUS + url)
-                    .cookies(cookies)
-                    .timeout(10000)
-                    .userAgent(Constants.USER_AGENT)
-                    .get();
+        List<Movie> movies = new ArrayList<>();
 
-            Elements elements = document.select("#waterfall #waterfall .item");
-            for (Element element : elements) {
-                Movie movie = parseMovie(element);
-                movies.add(movie);
-            }
-            Pagination pagination = parsePage(document);
-            moviePage.setRows(movies);
-            moviePage.setPagination(pagination);
-        }catch (Exception e){
-
+        Elements elements = document.select("#waterfall #waterfall .item");
+        for (Element element : elements) {
+            Movie movie = parseMovie(element);
+            movies.add(movie);
         }
+        Pagination pagination = parsePage(document);
+        moviePage.setRows(movies);
+        moviePage.setPagination(pagination);
         return moviePage;
     }
 
     private Pagination parsePage(Document document) {
-
          Long  currentPage = Long.parseLong(document.select(".pagination .active a").text());
          List<Long> pages = document.select(".pagination li a").stream()
                  .map(Element::text)
@@ -98,13 +88,8 @@ public class JavBusCrawler {
     }
 
 
-    private StarInfo parseStarInfo(String url,String starId) {
+    private StarInfo parseStarInfo(Document document,String starId) {
         try {
-            Document document = Jsoup.connect(Constants.JAVBUS + url)
-                    .timeout(10000)
-                    .userAgent(Constants.USER_AGENT)
-                    .get();
-
             Elements elements = document.select("#waterfall .item .avatar-box");
             String avatar = formatImageUrl(elements.select(".photo-frame img").attr("src"));
             String name = elements.select(".photo-info .pb10").text();
@@ -131,19 +116,162 @@ public class JavBusCrawler {
     }
 
     private MovieTag parseTagInfo(Document document,String tagId){
-        return null;
+        Elements elements = document.select("title");
+        String tag = RegUtils.regTag(elements.text());
+        return new MovieTag(tagId,tag);
     }
+
+
+    public List<Magnet> convertMagnetsHTML(Document document){
+        Elements elements =  document.select("tr");
+        List<Magnet> magnets = new ArrayList<>();
+        for (Element tr : elements) {
+            String link = Optional.ofNullable(tr.select("td a").attr("href")).orElse("");
+            String id = RegUtils.regLink(link);
+            boolean isHD = tr.select("td").select("a").text().indexOf("高清")>0;
+            boolean hasSubtitle = tr.select("td").select("a").text().indexOf("字幕")>0;
+            String title = tr.select("td a").text().trim();
+            String size = tr.select("td:nth-child(2) a").text().trim();
+            Integer numberSize = StringUtils.isNotBlank(size) ? Integer.parseInt(size) : 0;
+            String shareDate = tr.select("td:nth-child(3) a").text().trim();
+            Magnet magnet = new Magnet(id,link,isHD,title,numberSize,shareDate,hasSubtitle);
+            magnets.add(magnet);
+        }
+        return magnets;
+    }
+
+    private PageDTO<Movie> getMoviesByPage(String page, String magnet){
+        try {
+            String prefix = Constants.JAVBUS;
+            String url = page.equals("1") ? prefix: prefix +"/page/"+page;
+            Map<String,String> cookies = getCookies(magnet);
+            Document document = doGet(url,cookies);
+            return parseMoviesPage(document);
+        } catch (Exception e){
+
+        }
+        return new PageDTO<Movie>(Collections.emptyList());
+    }
+
+    private Map<String,Object> getMoviesByStarAndPage(String starId,String page, String magnet) {
+        try {
+            String prefix = Constants.JAVBUS + "/star";
+            String url = page.equals("1") ? prefix + "/" + starId : prefix + "/" + starId + "/" + page;
+            Map<String, String> cookies = getCookies(magnet);
+            Document document = doGet(url, cookies);
+            PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
+            StarInfo starInfo = parseStarInfo(document, starId);
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("starInfo", starInfo);
+            resp.put("page", moviePageDTO);
+            return resp;
+        } catch (Exception e) {
+
+        }
+        return new HashMap<>();
+    }
+
+
+    private Map<String,Object> getMoviesByTagAndPage(String tagId,String page, String magnet){
+        try {
+            String prefix = Constants.JAVBUS + "/genre";
+            String url = page.equals("1") ? prefix + "/" + tagId: prefix + "/" + tagId + "/" + page;
+            Map<String,String> cookies = getCookies(magnet);
+            Document document = doGet(url,cookies);
+            PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
+            MovieTag movieTag = parseTagInfo(document,tagId);
+            Map<String,Object> resp = new HashMap<>();
+            resp.put("movieTag",movieTag);
+            resp.put("page",moviePageDTO);
+            return resp;
+        } catch (Exception e){
+
+        }
+        return new HashMap<>();
+    }
+
+
+    private Map<String,Object> getMoviesByKeywordAndPage(String keyword,String page, String magnet){
+        try {
+            String prefix = Constants.JAVBUS + "/search";
+            String url = prefix + "/" + URLEncoder.encode(keyword) + "/" + page + "&type=1";
+            Map<String,String> cookies = getCookies(magnet);
+            Document document = doGet(url,cookies);
+            PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
+            Map<String,Object> resp = new HashMap<>();
+            resp.put("page",moviePageDTO);
+            return resp;
+        } catch (Exception e){
+
+        }
+        return new HashMap<>();
+    }
+
+
+    private List<Magnet> getMovieMagnets(String movieId,String gid,String uc){
+        try {
+            Map<String,Object> body = new HashMap<>();
+            body.put("lang","zh");
+            body.put("gid",gid);
+            body.put("uc",uc);
+            Map<String,String> headers = new HashMap<>();
+            headers.put("referer",Constants.JAVBUS + "/" + movieId);
+            Document document = doPost(body,headers,Constants.JAVBUS+"/ajax/uncledatoolsbyajax.php");
+            return convertMagnetsHTML(document);
+        }catch (Exception e){
+
+        }
+        return Collections.emptyList();
+    }
+
+
+    private Map<String,String> getCookies(String magnet){
+        Map<String,String> cookies = new HashMap<>();
+        if (Constants.MagnetType_e.equals(magnet)) {
+            cookies.put("existmag","mag");
+        } else {
+            cookies.put("existmag","all");
+        }
+        return cookies;
+    }
+
+    private Document doPost(Map<String,Object> body,Map<String,String> headers,String url) throws IOException {
+        Document document = Jsoup.connect(url)
+                            .headers(headers)
+                            .timeout(10000)
+                            .userAgent(Constants.USER_AGENT)
+                            .requestBody(JSONUtil.toJsonStr(body))
+                            .post();
+        return document;
+    }
+
+    private Document doGet(String url, Map<String,String> cookies) throws IOException {
+        Document document = Jsoup.connect(url)
+                .cookies(cookies)
+                .timeout(10000)
+                .userAgent(Constants.USER_AGENT)
+                .get();
+        return document;
+    }
+
 
     public static void main(String[] args) {
         JavBusCrawler javBusCrawler = new JavBusCrawler();
-        PageDTO<Movie> pageDTO = javBusCrawler.parseMoviesPage("/","exist");
-        pageDTO.getRows().forEach(movie -> {
-            System.out.println(movie);
-        });
+//        PageDTO<Movie> pageDTO = javBusCrawler.getMoviesByPage("1","exist");
+//        pageDTO.getRows().forEach(movie -> {
+//            System.out.println(movie);
+//        });
 
-        StarInfo starInfo = javBusCrawler.parseStarInfo("/star/2xi","2xi");
-        System.out.println(starInfo);
+//        Map<String,Object> resp = javBusCrawler.getMoviesByStarAndPage("2xi","1","exist");
+//        System.out.println(JSONUtil.toJsonStr(resp));
 
+//        Map<String,Object> resp = javBusCrawler.getMoviesByKeywordAndPage("三上","1","exist");
+//        System.out.println(JSONUtil.toJsonStr(resp));
+
+//        Map<String,Object> resp = javBusCrawler.getMoviesByTagAndPage("2t","1","exist");
+//        System.out.println(JSONUtil.toJsonStr(resp));
+        List<Magnet> magnets = javBusCrawler.getMovieMagnets("SSIS-406","1","exist");
+        System.out.println(JSONUtil.toJsonStr(magnets));
     }
 
 }
