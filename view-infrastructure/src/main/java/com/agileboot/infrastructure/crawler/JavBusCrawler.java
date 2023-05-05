@@ -140,20 +140,23 @@ public class JavBusCrawler {
         return magnets;
     }
 
-    private PageDTO<Movie> getMoviesByPage(String page, String magnet){
+    public Map<String,Object> getMoviesByPage(String page, String magnet){
+        Map<String,Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS;
             String url = page.equals("1") ? prefix: prefix +"/page/"+page;
             Map<String,String> cookies = getCookies(magnet);
             Document document = doGet(url,cookies);
-            return parseMoviesPage(document);
+            PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
+            resp.put("page",moviePageDTO);
         } catch (Exception e){
 
         }
-        return new PageDTO<Movie>(Collections.emptyList());
+        return resp;
     }
 
-    private Map<String,Object> getMoviesByStarAndPage(String starId,String page, String magnet) {
+    public Map<String,Object> getMoviesByStarAndPage(String starId,String page, String magnet) {
+        Map<String, Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/star";
             String url = page.equals("1") ? prefix + "/" + starId : prefix + "/" + starId + "/" + page;
@@ -161,18 +164,18 @@ public class JavBusCrawler {
             Document document = doGet(url, cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
             StarInfo starInfo = parseStarInfo(document, starId);
-            Map<String, Object> resp = new HashMap<>();
             resp.put("starInfo", starInfo);
             resp.put("page", moviePageDTO);
             return resp;
         } catch (Exception e) {
 
         }
-        return new HashMap<>();
+        return resp;
     }
 
 
-    private Map<String,Object> getMoviesByTagAndPage(String tagId,String page, String magnet){
+    public Map<String,Object> getMoviesByTagAndPage(String tagId,String page, String magnet){
+        Map<String,Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/genre";
             String url = page.equals("1") ? prefix + "/" + tagId: prefix + "/" + tagId + "/" + page;
@@ -180,31 +183,30 @@ public class JavBusCrawler {
             Document document = doGet(url,cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
             MovieTag movieTag = parseTagInfo(document,tagId);
-            Map<String,Object> resp = new HashMap<>();
             resp.put("movieTag",movieTag);
             resp.put("page",moviePageDTO);
             return resp;
         } catch (Exception e){
 
         }
-        return new HashMap<>();
+        return resp;
     }
 
 
-    private Map<String,Object> getMoviesByKeywordAndPage(String keyword,String page, String magnet){
+    public Map<String,Object> getMoviesByKeywordAndPage(String keyword,String page, String magnet){
+        Map<String,Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/search";
             String url = prefix + "/" + URLEncoder.encode(keyword) + "/" + page + "&type=1";
             Map<String,String> cookies = getCookies(magnet);
             Document document = doGet(url,cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
-            Map<String,Object> resp = new HashMap<>();
             resp.put("page",moviePageDTO);
             return resp;
         } catch (Exception e){
 
         }
-        return new HashMap<>();
+        return resp;
     }
 
 
@@ -245,7 +247,7 @@ public class JavBusCrawler {
         return document;
     }
 
-    private Document doGet(String url, Map<String,String> cookies) throws IOException {
+   private Document doGet(String url, Map<String,String> cookies) throws IOException {
         Document document = Jsoup.connect(url)
                 .cookies(cookies)
                 .timeout(10000)
@@ -273,5 +275,4 @@ public class JavBusCrawler {
         List<Magnet> magnets = javBusCrawler.getMovieMagnets("SSIS-406","1","exist");
         System.out.println(JSONUtil.toJsonStr(magnets));
     }
-
 }
