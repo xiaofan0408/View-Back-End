@@ -10,7 +10,9 @@ import com.agileboot.infrastructure.crawler.model.Magnet;
 import com.agileboot.infrastructure.crawler.model.Movie;
 import com.agileboot.infrastructure.crawler.model.MovieTag;
 import com.agileboot.infrastructure.crawler.model.StarInfo;
+import com.agileboot.infrastructure.crawler.utils.EncodingUtil;
 import com.agileboot.infrastructure.crawler.utils.RegUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -25,10 +27,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 public class JavBusCrawler {
-
-
 
 
     public PageDTO<Movie> parseMoviesPage(Document document){
@@ -140,20 +141,23 @@ public class JavBusCrawler {
         return magnets;
     }
 
-    private PageDTO<Movie> getMoviesByPage(String page, String magnet){
+    public Map<String,Object> getMoviesByPage(String page, String magnet){
+        Map<String, Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS;
             String url = page.equals("1") ? prefix: prefix +"/page/"+page;
             Map<String,String> cookies = getCookies(magnet);
             Document document = doGet(url,cookies);
-            return parseMoviesPage(document);
+            PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
+            resp.put("page", moviePageDTO);
         } catch (Exception e){
 
         }
-        return new PageDTO<Movie>(Collections.emptyList());
+        return resp;
     }
 
-    private Map<String,Object> getMoviesByStarAndPage(String starId,String page, String magnet) {
+    public Map<String,Object> getMoviesByStarAndPage(String starId,String page, String magnet) {
+        Map<String, Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/star";
             String url = page.equals("1") ? prefix + "/" + starId : prefix + "/" + starId + "/" + page;
@@ -161,18 +165,18 @@ public class JavBusCrawler {
             Document document = doGet(url, cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
             StarInfo starInfo = parseStarInfo(document, starId);
-            Map<String, Object> resp = new HashMap<>();
             resp.put("starInfo", starInfo);
             resp.put("page", moviePageDTO);
             return resp;
         } catch (Exception e) {
 
         }
-        return new HashMap<>();
+        return resp;
     }
 
 
-    private Map<String,Object> getMoviesByTagAndPage(String tagId,String page, String magnet){
+    public Map<String,Object> getMoviesByTagAndPage(String tagId,String page, String magnet){
+        Map<String,Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/genre";
             String url = page.equals("1") ? prefix + "/" + tagId: prefix + "/" + tagId + "/" + page;
@@ -180,31 +184,30 @@ public class JavBusCrawler {
             Document document = doGet(url,cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
             MovieTag movieTag = parseTagInfo(document,tagId);
-            Map<String,Object> resp = new HashMap<>();
             resp.put("movieTag",movieTag);
             resp.put("page",moviePageDTO);
             return resp;
         } catch (Exception e){
 
         }
-        return new HashMap<>();
+        return resp;
     }
 
 
-    private Map<String,Object> getMoviesByKeywordAndPage(String keyword,String page, String magnet){
+    public Map<String,Object> getMoviesByKeywordAndPage(String keyword,String page, String magnet){
+        Map<String,Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/search";
-            String url = prefix + "/" + URLEncoder.encode(keyword) + "/" + page + "&type=1";
+            String url = prefix + "/" + EncodingUtil.encodeURIComponent(keyword) + "/" + page + "&type=1";
             Map<String,String> cookies = getCookies(magnet);
             Document document = doGet(url,cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
-            Map<String,Object> resp = new HashMap<>();
             resp.put("page",moviePageDTO);
             return resp;
         } catch (Exception e){
-
+            log.warn("error: ",e);
         }
-        return new HashMap<>();
+        return resp;
     }
 
 
@@ -241,37 +244,4 @@ public class JavBusCrawler {
                             .timeout(10000)
                             .userAgent(Constants.USER_AGENT)
                             .requestBody(JSONUtil.toJsonStr(body))
-                            .post();
-        return document;
-    }
-
-    private Document doGet(String url, Map<String,String> cookies) throws IOException {
-        Document document = Jsoup.connect(url)
-                .cookies(cookies)
-                .timeout(10000)
-                .userAgent(Constants.USER_AGENT)
-                .get();
-        return document;
-    }
-
-
-    public static void main(String[] args) {
-        JavBusCrawler javBusCrawler = new JavBusCrawler();
-//        PageDTO<Movie> pageDTO = javBusCrawler.getMoviesByPage("1","exist");
-//        pageDTO.getRows().forEach(movie -> {
-//            System.out.println(movie);
-//        });
-
-//        Map<String,Object> resp = javBusCrawler.getMoviesByStarAndPage("2xi","1","exist");
-//        System.out.println(JSONUtil.toJsonStr(resp));
-
-//        Map<String,Object> resp = javBusCrawler.getMoviesByKeywordAndPage("三上","1","exist");
-//        System.out.println(JSONUtil.toJsonStr(resp));
-
-//        Map<String,Object> resp = javBusCrawler.getMoviesByTagAndPage("2t","1","exist");
-//        System.out.println(JSONUtil.toJsonStr(resp));
-        List<Magnet> magnets = javBusCrawler.getMovieMagnets("SSIS-406","1","exist");
-        System.out.println(JSONUtil.toJsonStr(magnets));
-    }
-
-}
+                            .post(

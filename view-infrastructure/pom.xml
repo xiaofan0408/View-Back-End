@@ -112,10 +112,13 @@
         </dependency>
 
         <dependency>
+<!--            <groupId>com.github.xiaoymin</groupId>-->
+<!--            <artifactId>knife4j-springdoc-ui</artifactId>-->
+<!--            &lt;!&ndash;在引用时请在maven中央仓库搜索3.X最新版本号&ndash;&gt;-->
+<!--            <version>3.0.3</version>-->
             <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-springdoc-ui</artifactId>
-            <!--在引用时请在maven中央仓库搜索3.X最新版本号-->
-            <version>3.0.3</version>
+            <artifactId>knife4j-openapi2-spring-boot-starter</artifactId>
+            <version>4.1.0</version>
         </dependency>
 
         <dependency>
