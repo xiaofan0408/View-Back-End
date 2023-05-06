@@ -36,7 +36,7 @@ public class MovieDetail {
     private List<Sample> samples;
 
     @Data
-    static class U {
+    public static class U {
 
         private String id;
 

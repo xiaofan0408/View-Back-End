@@ -6,10 +6,7 @@ import cn.hutool.json.JSONUtil;
 import com.agileboot.common.core.page.PageDTO;
 import com.agileboot.common.core.page.Pagination;
 import com.agileboot.infrastructure.crawler.constant.Constants;
-import com.agileboot.infrastructure.crawler.model.Magnet;
-import com.agileboot.infrastructure.crawler.model.Movie;
-import com.agileboot.infrastructure.crawler.model.MovieTag;
-import com.agileboot.infrastructure.crawler.model.StarInfo;
+import com.agileboot.infrastructure.crawler.model.*;
 import com.agileboot.infrastructure.crawler.utils.RegUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.jsoup.Jsoup;
@@ -123,21 +120,41 @@ public class JavBusCrawler {
 
 
     public List<Magnet> convertMagnetsHTML(Document document){
-        Elements elements =  document.select("tr");
-        List<Magnet> magnets = new ArrayList<>();
-        for (Element tr : elements) {
-            String link = Optional.ofNullable(tr.select("td a").attr("href")).orElse("");
-            String id = RegUtils.regLink(link);
-            boolean isHD = tr.select("td").select("a").text().indexOf("高清")>0;
-            boolean hasSubtitle = tr.select("td").select("a").text().indexOf("字幕")>0;
-            String title = tr.select("td a").text().trim();
-            String size = tr.select("td:nth-child(2) a").text().trim();
-            Integer numberSize = StringUtils.isNotBlank(size) ? Integer.parseInt(size) : 0;
-            String shareDate = tr.select("td:nth-child(3) a").text().trim();
-            Magnet magnet = new Magnet(id,link,isHD,title,numberSize,shareDate,hasSubtitle);
-            magnets.add(magnet);
+        Elements elements =  document.select("body > a");
+        Map<String,Magnet> magnets = new HashMap<>();
+        String prv = null;
+        int index = 0;
+        for (Element a : elements) {
+            String link = a.attr("href");
+            if (StringUtils.isBlank(link)) {
+                magnets.get(prv).setHD(true);
+                index = 0;
+            } else {
+                if (Objects.nonNull(prv)) {
+                    if (!prv.equals(link)) {
+                        prv = link;
+                        index = 0;
+                    }
+                }
+                if (!magnets.containsKey(link)) {
+                    String id = RegUtils.regLink(link);
+                    Magnet magnet = new Magnet();
+                    magnet.setId(id);
+                    magnet.setLink(link);
+                    magnets.put(link,magnet);
+                }
+                if (index == 0) {
+                    magnets.get(link).setTitle(a.text());
+                } else if (index == 1) {
+                    magnets.get(link).setShareDate(a.text());
+                } else if (index == 2){
+                    magnets.get(link).setNumberSize(a.text());
+                }
+                prv = link;
+                index = index + 1;
+            }
         }
-        return magnets;
+        return new ArrayList<>(magnets.values());
     }
 
     public Map<String,Object> getMoviesByPage(String page, String magnet){
@@ -197,7 +214,7 @@ public class JavBusCrawler {
         Map<String,Object> resp = new HashMap<>();
         try {
             String prefix = Constants.JAVBUS + "/search";
-            String url = prefix + "/" + URLEncoder.encode(keyword) + "/" + page + "&type=1";
+            String url = prefix + "/" + keyword + "/" + page + "&type=1";
             Map<String,String> cookies = getCookies(magnet);
             Document document = doGet(url,cookies);
             PageDTO<Movie> moviePageDTO = parseMoviesPage(document);
@@ -210,20 +227,121 @@ public class JavBusCrawler {
     }
 
 
-    private List<Magnet> getMovieMagnets(String movieId,String gid,String uc){
+    public List<Magnet> getMovieMagnets(String movieId,String gid,String uc){
         try {
+            String searchParams = "?lang=zh&"+"gid="+gid + "&uc=" +uc;
             Map<String,Object> body = new HashMap<>();
-            body.put("lang","zh");
-            body.put("gid",gid);
-            body.put("uc",uc);
             Map<String,String> headers = new HashMap<>();
             headers.put("referer",Constants.JAVBUS + "/" + movieId);
-            Document document = doPost(body,headers,Constants.JAVBUS+"/ajax/uncledatoolsbyajax.php");
+            Document document = doPost(body,headers,Constants.JAVBUS+"/ajax/uncledatoolsbyajax.php" + searchParams);
             return convertMagnetsHTML(document);
         }catch (Exception e){
 
         }
         return Collections.emptyList();
+    }
+
+    public List<Magnet> getMovieMagnetsByMovieId(String movieId){
+        try {
+            String url = Constants.JAVBUS + "/" + movieId;
+            Document document = doGet(url,new HashMap<>());
+            String gid = RegUtils.gid(document.html());
+            String uc = RegUtils.uc(document.html());
+            return getMovieMagnets(movieId,gid,uc);
+        }catch (Exception e){
+
+        }
+        return null;
+    }
+
+
+    public MovieDetail getMovieDetail(String id){
+        try {
+            String url = Constants.JAVBUS + "/" + id;
+            Document document = doGet(url,new HashMap<>());
+            String title = document.select(".container h3").text();
+            String img = formatImageUrl(document.select(".container .movie .bigImage img").attr("src"));
+            ImageSize imageSize = new ImageSize();
+            Elements infoNodes = document.select(".container .movie .info p");
+            String date = textInfoFinder(infoNodes,"發行日期:");
+            String videoLength = textInfoFinder(infoNodes, "長度:", "分鐘");
+            Integer numberVideoLength = StringUtils.isNotBlank(videoLength) ? Integer.parseInt(videoLength) : null;
+            MovieDetail.U director = linkInfoFinder(infoNodes, "導演:", "director");
+            MovieDetail.U producer = linkInfoFinder(infoNodes, "製作商:", "studio");
+            MovieDetail.U publisher = linkInfoFinder(infoNodes, "發行商:", "label");
+            MovieDetail.U series = linkInfoFinder(infoNodes, "系列:", "series");
+
+//  const genres = multipleInfoFinder<Property>(
+//                    infoNodes,
+//                    'genre',
+//                    (genre) => !genre.hasAttribute('onmouseover'),
+//                    (genre) => genre.querySelector('label a')
+//  );
+//  const stars = multipleInfoFinder<Property>(
+//                    infoNodes,
+//                    'star',
+//                    (genre) => genre.hasAttribute('onmouseover'),
+//                    (genre) => genre.querySelector('a')
+//  );
+//
+//            /* ----------------- 磁力链接 ------------------ */
+//  const gidReg = /var gid = (\d+);/;
+//  const ucReg = /var uc = (\d+);/;
+//
+//  const gid = res.match(gidReg)?.[1] ?? null;
+//  const uc = res.match(ucReg)?.[1] ?? null;
+//
+//  const magnets = gid && uc ? await getMovieMagnets({ movieId: id, gid, uc }) : [];
+//
+//            /* ----------------- 样品图片 ------------------ */
+//  const samples = doc
+//                    .querySelectorAll('#sample-waterfall .sample-box')
+//                    .map<Sample>((box) => {
+//      const img = box.querySelector('.photo-frame img');
+//      const thumbnail = formatImageUrl(img?.getAttribute('src')) ?? '';
+//      const filename = thumbnail.split('/').pop();
+//      const id = filename?.match(/(\S+)\.(jpe?g|png|webp|gif)$/i)?.[1] ?? '';
+//      const alt = img?.getAttribute('title') ?? null;
+//      const src = formatImageUrl(box.getAttribute('href')) ?? null;
+//            return {
+//                    alt,
+//                    id,
+//                    src,
+//                    thumbnail,
+//            };
+//    })
+//    .filter(({ id, thumbnail }) => Boolean(id) && Boolean(thumbnail));
+//
+//            return {
+//                    id,
+//                    title,
+//                    img,
+//                    imageSize,
+//                    date,
+//                    videoLength: numberVideoLength,
+//                    director,
+//                    producer,
+//                    publisher,
+//                    series,
+//                    genres,
+//                    stars,
+//                    magnets,
+//                    samples,
+//  };
+        MovieDetail movieDetail = new MovieDetail();
+
+        }catch (Exception e){
+
+        }
+        return null;
+    }
+
+    private MovieDetail.U linkInfoFinder(Elements infoNodes, String s, String director) {
+        return null;
+    }
+
+    private String textInfoFinder(Elements infoNodes, String ...args) {
+        return null;
     }
 
 

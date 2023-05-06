@@ -7,6 +7,7 @@ import com.agileboot.domain.view.query.ListQuery;
 import com.agileboot.domain.view.query.MovieQuery;
 import com.agileboot.domain.view.query.SearchQuery;
 import com.agileboot.infrastructure.crawler.JavBusCrawler;
+import com.agileboot.infrastructure.crawler.model.Magnet;
 import com.agileboot.orm.view.entity.ViewMovieEntity;
 import com.agileboot.orm.view.service.IViewMovieService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -51,5 +52,12 @@ public class ViewMovieAppService {
             return crawler.getMoviesByKeywordAndPage(query.getKeyword(),query.getPageNum().toString(),"exist");
         }
         return new HashMap<>();
+    }
+
+    public Map<String, Object> magnetList(String movieId) {
+        List<Magnet> magnetList = crawler.getMovieMagnetsByMovieId(movieId);
+        Map<String,Object> map = new HashMap<>();
+        map.put("list",magnetList);
+        return map;
     }
 }

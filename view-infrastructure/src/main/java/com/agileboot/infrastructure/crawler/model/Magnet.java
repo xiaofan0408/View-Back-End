@@ -17,7 +17,7 @@ public class Magnet {
 
     private String title;
 
-    private int numberSize;
+    private String numberSize;
 
     private String shareDate;
 
